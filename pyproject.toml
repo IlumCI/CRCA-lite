@@ -1,0 +1,31 @@
+[project]
+name = "cr-ca"
+version = "1.1.0"
+description = "CR-CA Lite — lightweight causal reasoning agent (CR-CA)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name="A. Ilum LeiLion", email="a.leilionas@vk.com" }
+]
+dependencies = [
+  "rustworkx>=0.12.0",
+  "numpy>=1.23",
+  "pandas>=1.5",
+  "matplotlib>=3.5",
+  "seaborn>=0.11",
+  "requests>=2.28",
+  "swarms",
+  "loguru",
+  "litellm>=0.1",
+  "pycoingecko>=3.0",
+  "pytrends>=4.8.0",
+  "praw>=7.0",
+  "python-dateutil>=2.8",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-q"
+testpaths = ["CR-CA"]
+
+
