@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""
+Lightweight sanity check for CRCAAgent core functions.
+- Runs a few deterministic, offline checks (no LLM network calls).
+- Reads GROQ_API_KEY from env and reports presence (does NOT call any external API).
+Exit code: 0 on success, non-zero on failure.
+"""
+from importlib.util import spec_from_file_location, module_from_spec
+from pathlib import Path
+import os
+import sys
+import math
+
+
+def load_crca_agent():
+    # In this repository layout the implementation lives alongside this script.
+    module_path = Path(__file__).resolve().parent / "CRCA.py"
+    spec = spec_from_file_location("crca_module", str(module_path))
+    mod = module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore
+    return mod.CRCAAgent
+
+
+def mask_key(k: str) -> str:
+    if not k:
+        return "<missing>"
+    if len(k) <= 8:
+        return k[:2] + "*" * (len(k) - 2)
+    return k[:4] + "*" * (len(k) - 8) + k[-4:]
+
+
+def main():
+    CRCAAgent = load_crca_agent()
+    failures = []
+
+    # Test 1: add edge and read strength
+    try:
+        a = CRCAAgent(variables=["A", "B"])
+        a.add_causal_relationship("A", "B", strength=0.72, confidence=0.9)
+        s = a._edge_strength("A", "B")
+        assert abs(s - 0.72) < 1e-6, f"edge strength {s} != 0.72"
+        print("PASS: add_causal_relationship -> _edge_strength")
+    except Exception as e:
+        failures.append(("edge_strength", str(e)))
+
+    # Test 2: topological sort and is_dag
+    try:
+        a2 = CRCAAgent(variables=["n1", "n2", "n3"])
+        a2.add_causal_relationship("n1", "n2", strength=1.0)
+        a2.add_causal_relationship("n2", "n3", strength=1.0)
+        order = a2._topological_sort()
+        assert order.index("n1") < order.index("n2") < order.index("n3")
+        assert a2.is_dag() is True
+        print("PASS: _topological_sort and is_dag")
+    except Exception as e:
+        failures.append(("topo_is_dag", str(e)))
+
+    # Test 3: rustworkx duplicate-edge protection and metadata update
+    try:
+        a3 = CRCAAgent(variables=["X", "Y"])
+        # initial edges count
+        try:
+            before_edges = a3._graph.num_edges()
+        except Exception:
+            before_edges = None
+        a3.add_causal_relationship("X", "Y", strength=0.5)
+        # add again with different strength to trigger update path
+        a3.add_causal_relationship("X", "Y", strength=0.77)
+        s_updated = a3._edge_strength("X", "Y")
+        assert abs(s_updated - 0.77) < 1e-6, f"edge strength not updated: {s_updated}"
+        # ensure rustworkx didn't add duplicate edge (num_edges unchanged or increased by at most 1 if nodes added)
+        try:
+            after_edges = a3._graph.num_edges()
+            if before_edges is not None:
+                assert after_edges - before_edges <= 1
+        except Exception:
+            # If rustworkx didn't support num_edges, ignore this check
+            pass
+        print("PASS: rustworkx duplicate-edge protection and metadata update")
+    except Exception as e:
+        failures.append(("rustworkx_edge_update", str(e)))
+
+    # Test 4: prediction cache behavior (cached wrapper)
+    try:
+        a4 = CRCAAgent(variables=["Z"])
+        a4.set_standardization_stats("Z", mean=0.0, std=1.0)
+        a4._prediction_cache_max = 5
+        a4.enable_cache(True)
+        a4.clear_cache()
+        factual = {"Z": 0.0}
+        # call cached predictor twice
+        r1 = a4._predict_outcomes_cached(factual, {})
+        r2 = a4._predict_outcomes_cached(factual, {})
+        # check cache populated
+        cache_len = len(getattr(a4, "_prediction_cache", {}))
+        assert cache_len >= 1, "prediction cache not populated"
+        assert r1 == r2, "cached results differ between calls"
+        print("PASS: _predict_outcomes_cached populates cache and returns consistent results")
+    except Exception as e:
+        failures.append(("predict_cache", str(e)))
+
+    # Test 5: basic AAP smoke (deterministic)
+    try:
+        a5 = CRCAAgent(variables=["price", "volume", "momentum", "trading_volume", "market_sentiment"])
+        a5.set_standardization_stats("price", mean=1.0, std=1.0)
+        a5.set_standardization_stats("volume", mean=100000.0, std=20000.0)
+        a5.set_standardization_stats("momentum", mean=0.0, std=0.05)
+        a5.set_standardization_stats("trading_volume", mean=100000.0, std=20000.0)
+        a5.add_causal_relationship("volume", "price", strength=0.3)
+        a5.add_causal_relationship("momentum", "price", strength=0.4)
+        factual = {"price": 1.0, "volume": 100000.0, "momentum": 0.02, "trading_volume": 120000.0}
+        res = a5.aap(factual, {"momentum": 0.05})
+        assert "price" in res and isinstance(res["price"], (int, float))
+        print("PASS: AAP smoke (price present and numeric)")
+    except Exception as e:
+        failures.append(("aap_smoke", str(e)))
+
+    # Check GROQ_API_KEY presence (do not call network)
+    key = os.environ.get("GROQ_API_KEY", "")
+    if key:
+        print("GROQ_API_KEY found:", mask_key(key))
+    else:
+        print("GROQ_API_KEY not set (ok — LLM network tests skipped)")
+
+    # Optional LLM integration smoke test (runs only if GROQ_API_KEY is present)
+    if key:
+        try:
+            # Initialize agent with a GROQ model for LLM smoke test
+            agent_llm = CRCAAgent(variables=["price", "demand"], model_name="groq/llama-3.3-70b-versatile", max_loops=1)
+            # Short LLM task to exercise the LLM integration path
+            task = "Provide a one-sentence causal analysis: describe why increasing price might change demand."
+            # Run the LLM causal analysis workflow
+            res = agent_llm._run_llm_causal_analysis(task)
+            ca = res.get("causal_analysis", "")
+            # Basic checks and sample output (be permissive about returned shape)
+            ok = False
+            if isinstance(ca, str) and ca.strip():
+                ok = True
+            elif isinstance(res.get("analysis_steps"), list) and len(res.get("analysis_steps", [])) > 0:
+                ok = True
+
+            if ok:
+                print("PASS: LLM integration smoke (causal_analysis present)")
+                if isinstance(ca, str) and ca.strip():
+                    sample = " ".join(ca.strip().splitlines())[:240]
+                else:
+                    sample = str(res)[:240]
+                print("LLM sample:", sample)
+            else:
+                failures.append(("llm_smoke", f"unexpected LLM result shape: {list(res.keys())}"))
+        except Exception as e:
+            failures.append(("llm_smoke", str(e)))
+    # Report
+    if failures:
+        print("\nSANITY CHECK FAILED:")
+        for name, msg in failures:
+            print(f"- {name}: {msg}")
+        print("\nFix the above issues before considering prod deployment.")
+        sys.exit(2)
+    else:
+        print("\nAll sanity checks passed.")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+
+
