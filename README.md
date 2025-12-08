@@ -26,15 +26,6 @@ Use the canonical agent import in application code:
 ```python
 from path.to.crca import CRCAAgent
 ```
-```python
-from path.to.crca import CRCAAgent
-```
-```python
-from path.to.crca import CRCAAgent
-```
-```python
-from path.to.crca import CRCAAgent
-```
 
 Quickstart
 ----------
