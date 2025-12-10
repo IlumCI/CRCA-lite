@@ -1,7 +1,7 @@
 <!-- swarms/agents/cr_ca_agent.py — CRCAAgent (CR‑CA Lite) -->
 # CRCAAgent 
 
-Release: v1.1.0 — production hardening (thread-safe cache, CI sanity workflow, pytest smoke tests)
+Release: v1.2.0 — advanced analysis suite (optimization, time-series, Bayesian inference, async support, batch prediction)
 
 Short summary
 -------------
@@ -14,10 +14,16 @@ evolution operator (in z-space), and compact counterfactual generation.
 Key properties
 - LLM integration for sophisticated causal reasoning (like full CRCAAgent)
 - Dual-mode operation: LLM-based analysis and deterministic simulation
-- Minimal dependencies (numpy + swarms Agent base)
-- Pure-Python causal graph (adjacency dicts)
-- Linear SCM evolution by default (overrideable)
+- Minimal core dependencies (numpy + swarms Agent base), optional heavy deps (pandas/scipy/cvxpy) for advanced features
+- Pure-Python causal graph (adjacency dicts) with rustworkx backend
+- Linear/non-linear SCM evolution (tanh activation, interaction terms)
 - Agent-first `run()` entrypoint (accepts task string or dict/JSON payloads)
+- Batch prediction support for efficient ensemble forecasting
+- Async/await support for concurrent operations
+- Advanced optimization methods (gradient-based, Bellman dynamic programming)
+- Time-series analysis (Granger causality, VAR estimation)
+- Bayesian inference and information-theoretic measures
+- Comprehensive root cause analysis and sensitivity analysis
 
 Canonical import
 ----------------
@@ -161,7 +167,10 @@ agent = CRCAAgent(
     model_name="gpt-4o",
     max_loops=3,
     agent_name="cr-ca-forecaster",
-    agent_description="CR-CA ensemble market-cap forecaster"
+    agent_description="CR-CA ensemble market-cap forecaster",
+    enable_batch_predict=True,  # Enable batch prediction for efficiency
+    max_batch_size=32,
+    seed=42  # Reproducibility
 )
 
 # Load historical series (aligned, cleaned)
@@ -183,14 +192,19 @@ factual = {
     "sentiment": df["sentiment"].iloc[-1],
 }
 
-# Run an ensemble of AAP counterfactuals for 90 days
-ensemble = []
+# Run an ensemble of AAP counterfactuals using batch prediction (v1.2.0+)
 N = 200
-for i in range(N):
-    # Optionally apply randomized policy shocks in some runs
-    interventions = {}  # e.g., {"trends": factual["trends"] * 1.02}
-    pred = agent.aap(factual, interventions)
-    ensemble.append(pred["log_market_cap"])  # or full trace if agent returns it
+factual_states = [factual] * N
+interventions_list = [{}] * N  # or vary interventions per run
+batch_predictions = agent._predict_outcomes_batch(factual_states, interventions_list)
+ensemble = [pred["log_market_cap"] for pred in batch_predictions]
+
+# Alternative: traditional loop (still supported)
+# ensemble = []
+# for i in range(N):
+#     interventions = {}  # e.g., {"trends": factual["trends"] * 1.02}
+#     pred = agent.aap(factual, interventions)
+#     ensemble.append(pred["log_market_cap"])
 
 # Aggregate ensemble predictions to mean/p10/p90
 mean_pred = np.mean(ensemble, axis=0)
@@ -234,9 +248,198 @@ print("Edges:", agent.get_edges())           # dict view with metadata
 print("rustworkx edges:", agent._graph.edge_list())  # internal view for debugging
 ```
 
+4) Advanced optimization: finding optimal interventions (v1.2.0+)
+
+```python
+from path.to.crca import CRCAAgent
+import pandas as pd
+
+agent = CRCAAgent(
+    variables=["price", "demand", "inventory", "revenue"],
+    seed=42
+)
+agent.add_causal_relationship("price", "demand", strength=-0.5)
+agent.add_causal_relationship("demand", "inventory", strength=-0.2)
+agent.add_causal_relationship("price", "revenue", strength=1.0)
+agent.add_causal_relationship("demand", "revenue", strength=0.8)
+
+initial_state = {"price": 100.0, "demand": 1000.0, "inventory": 5000.0, "revenue": 100000.0}
+
+# Gradient-based optimization (requires scipy)
+opt_result = agent.gradient_based_intervention_optimization(
+    initial_state=initial_state,
+    target="revenue",
+    intervention_vars=["price"],
+    constraints={"price": (80.0, 120.0)},  # price bounds
+    method="L-BFGS-B"
+)
+print("Optimal intervention:", opt_result["optimal_intervention"])
+print("Optimal revenue:", opt_result["optimal_target_value"])
+
+# Bellman optimal intervention (multi-step planning)
+bellman_result = agent.bellman_optimal_intervention(
+    initial_state=initial_state,
+    target="revenue",
+    intervention_vars=["price"],
+    horizon=5,
+    discount=0.9
+)
+print("Optimal sequence:", bellman_result["optimal_sequence"])
+print("Final state:", bellman_result["final_state"])
+```
+
+5) Time-series causal analysis (v1.2.0+)
+
+```python
+import pandas as pd
+from path.to.crca import CRCAAgent
+
+agent = CRCAAgent(variables=["price", "demand", "inventory"])
+df = pd.read_csv("time_series_data.csv", parse_dates=["date"])
+
+# Granger causality test
+granger_result = agent.granger_causality_test(
+    df=df,
+    var1="price",
+    var2="demand",
+    max_lag=4
+)
+print("Granger causes:", granger_result["granger_causes"])
+print("P-value:", granger_result["p_value"])
+
+# Vector Autoregression (VAR) estimation
+var_result = agent.vector_autoregression_estimation(
+    df=df,
+    variables=["price", "demand", "inventory"],
+    max_lag=2
+)
+print("VAR coefficients:", var_result["coefficient_matrices"])
+```
+
+6) Bayesian inference and information theory (v1.2.0+)
+
+```python
+import pandas as pd
+from path.to.crca import CRCAAgent
+
+agent = CRCAAgent(variables=["price", "demand"])
+df = pd.read_csv("data.csv")
+
+# Bayesian edge inference
+bayesian_result = agent.bayesian_edge_inference(
+    df=df,
+    parent="price",
+    child="demand",
+    prior_mu=0.0,
+    prior_sigma=1.0
+)
+print("Posterior mean:", bayesian_result["posterior_mean"])
+print("95% Credible interval:", bayesian_result["credible_interval_95"])
+
+# Information-theoretic measures
+info_result = agent.compute_information_theoretic_measures(
+    df=df,
+    variables=["price", "demand", "inventory"]
+)
+print("Entropies:", info_result["entropies"])
+print("Mutual information:", info_result["mutual_information"])
+```
+
+7) Root cause analysis and sensitivity (v1.2.0+)
+
+```python
+from path.to.crca import CRCAAgent
+
+agent = CRCAAgent(variables=["a", "b", "c", "d", "e"])
+agent.add_causal_relationship("a", "b", strength=0.8)
+agent.add_causal_relationship("b", "c", strength=0.6)
+agent.add_causal_relationship("c", "d", strength=0.7)
+agent.add_causal_relationship("a", "e", strength=0.5)
+
+# Deep root cause analysis
+rca_result = agent.deep_root_cause_analysis(
+    problem_variable="d",
+    max_depth=20,
+    min_path_strength=0.01
+)
+print("Ultimate root causes:", rca_result["ultimate_root_causes"])
+print("All root causes:", rca_result["all_root_causes"][:5])
+
+# Sensitivity analysis
+sensitivity_result = agent.sensitivity_analysis(
+    intervention={"a": 1.0, "b": 2.0},
+    target="d",
+    perturbation_size=0.01
+)
+print("Sensitivities:", sensitivity_result["sensitivities"])
+print("Most influential:", sensitivity_result["most_influential_variable"])
+
+# Shapley value attribution
+shapley_result = agent.shapley_value_attribution(
+    baseline_state={"a": 0.0, "b": 0.0, "c": 0.0},
+    target_state={"a": 1.0, "b": 2.0, "c": 1.5},
+    target="d",
+    samples=100
+)
+print("Shapley values:", shapley_result["shapley_values"])
+```
+
+8) Async operations and parallel uncertainty quantification (v1.2.0+)
+
+```python
+import asyncio
+import pandas as pd
+from path.to.crca import CRCAAgent
+
+agent = CRCAAgent(
+    variables=["price", "demand", "inventory"],
+    bootstrap_workers=4,  # Parallel bootstrap sampling
+    seed=42
+)
+
+# Async run
+async def async_example():
+    result = await agent.run_async(
+        initial_state={"price": 100.0, "demand": 1000.0},
+        max_steps=2
+    )
+    return result
+
+# Parallel uncertainty quantification
+df = pd.read_csv("data.csv")
+uncertainty_result = agent.quantify_uncertainty(
+    df=df,
+    variables=["price", "demand", "inventory"],
+    windows=200,
+    alpha=0.95
+)
+print("Edge confidence intervals:", uncertainty_result["edge_cis"])
+
+# Async uncertainty quantification
+async def async_uncertainty():
+    result = await agent.quantify_uncertainty_async(
+        df=df,
+        variables=["price", "demand", "inventory"],
+        windows=200
+    )
+    return result
+```
+
 Notable implementation details (v1.1.0+)
 ---------------------------------------
 The Lite agent has received a number of engine and hygiene improvements. Key implementation notes and where to find them:
+
+**v1.2.0 additions:**
+- Batch prediction uses vectorized numpy operations for efficient ensemble forecasting
+- Async operations leverage `asyncio.get_running_loop().run_in_executor()` for non-blocking execution
+- Optimization methods use scipy's `minimize()` with configurable methods (L-BFGS-B default)
+- Time-series methods implement standard econometric techniques (OLS, F-tests)
+- Bayesian inference uses conjugate prior updates for efficient posterior computation
+- Information theory uses histogram-based entropy estimation
+- Parallel bootstrap uses `ThreadPoolExecutor` when `bootstrap_workers > 0`
+- Optional dependencies are detected at runtime with graceful fallbacks
+
+**v1.1.0 foundations:**
 
 - rustworkx-backed graph
   - The internal causal graph is backed by `rustworkx.PyDiGraph` while retaining the original dict-of-dicts view for backward compatibility.
@@ -305,15 +508,41 @@ Counterfactuals & reasoning
 
 Estimation, analysis & utilities
 - `fit_from_dataframe(df, variables, window=30, ...)` — WLS edge estimation and stats
-- `quantify_uncertainty(df, variables, windows=200, ...)` — bootstrap CIs
+- `quantify_uncertainty(df, variables, windows=200, ...)` — bootstrap CIs (supports parallel workers)
 - `analyze_causal_strength(source, target)` — path/edge summary
 - `identify_causal_chain(start, end)` — BFS shortest path
-- `detect_change_points(series, threshold=2.5)` — simple detector
+- `detect_confounders(treatment, outcome)` — identify confounders
+- `identify_adjustment_set(treatment, outcome)` — find adjustment sets
 
-Advanced (optional / Pro)
-- `learn_structure(...)`, `plan_interventions(...)`, `gradient_based_intervention_optimization(...)`,
-  `convex_intervention_optimization(...)`, `evolutionary_multi_objective_optimization(...)`,
-  `probabilistic_nested_simulation(...)`, `deep_root_cause_analysis(...)`, and more.
+Batch & performance
+- `_predict_outcomes_batch(factual_states, interventions)` — vectorized batch prediction
+- `enable_batch_predict` parameter — enable batch mode for efficiency
+- `max_batch_size` parameter — control batch size
+
+Optimization (v1.2.0+)
+- `gradient_based_intervention_optimization(...)` — scipy-based gradient optimization (requires scipy)
+- `bellman_optimal_intervention(...)` — dynamic programming multi-step optimization
+
+Time-series analysis (v1.2.0+, requires pandas/scipy)
+- `granger_causality_test(df, var1, var2, max_lag=4)` — Granger causality testing
+- `vector_autoregression_estimation(df, variables, max_lag=2)` — VAR model estimation
+
+Bayesian & information theory (v1.2.0+, requires pandas)
+- `bayesian_edge_inference(df, parent, child, ...)` — Bayesian edge strength estimation
+- `compute_information_theoretic_measures(df, variables)` — entropy and mutual information
+
+Advanced analysis (v1.2.0+)
+- `sensitivity_analysis(intervention, target, ...)` — sensitivity and elasticity analysis
+- `deep_root_cause_analysis(problem_variable, ...)` — comprehensive root cause identification
+- `shapley_value_attribution(baseline_state, target_state, target, ...)` — Shapley value attribution
+- `multi_layer_whatif_analysis(scenarios, depth=3)` — multi-layer scenario analysis
+- `explore_alternate_realities(factual_state, target_outcome, ...)` — reality exploration
+
+Async operations (v1.2.0+)
+- `run_async(...)` — async wrapper for `run()`
+- `quantify_uncertainty_async(...)` — async uncertainty quantification
+- `granger_causality_test_async(...)` — async Granger causality test
+- `vector_autoregression_estimation_async(...)` — async VAR estimation
 
 Return shape from `run()`
 -------------------------
@@ -387,12 +616,25 @@ Design notes & limitations
 - **Linearity**: default `_predict_outcomes` is linear in standardized z-space. To model non-linear dynamics, subclass `CRCAAgent` and override `_predict_outcomes`.
 - **Probabilities**: scenario probability is a heuristic proximity measure (Mahalanobis-like) — not a formal posterior.
 - **Stats**: the engine auto-fills standardization stats with sensible defaults (`mean=observed`, `std=1.0`) via `ensure_standardization_stats` to avoid degenerate std=0 cases.
-- **Dependencies**: Lite intentionally avoids heavy libs (pandas/scipy/cvxpy) but includes LLM integration via swarms Agent base.
+- **Dependencies**: Core functionality requires only numpy + swarms Agent base. Advanced features (optimization, time-series, Bayesian) require optional dependencies:
+  - `pandas` — for data-driven fitting, uncertainty quantification, time-series analysis, Bayesian inference
+  - `scipy` — for gradient-based optimization, Granger causality tests
+  - `cvxpy` — for convex optimization (if added in future)
+  - All optional dependencies are gracefully handled with feature detection
 
 Extending & integration
 -----------------------
-For advanced capabilities (structure learning, Bayesian inference, optimization,
-extensive statistical methods), Await further updates. E V E R Y T H I N G Has been pre-planned already.
+v1.2.0 includes comprehensive advanced capabilities:
+- **Optimization**: Gradient-based and Bellman dynamic programming methods
+- **Bayesian inference**: Edge strength estimation with credible intervals
+- **Time-series analysis**: Granger causality and VAR estimation
+- **Information theory**: Entropy and mutual information measures
+- **Root cause analysis**: Deep path-based analysis with strength filtering
+- **Sensitivity analysis**: Perturbation-based sensitivity and elasticity
+- **Attribution**: Shapley value for fair variable contribution
+- **Reality exploration**: Multi-scenario optimization and ranking
+
+For structure learning and additional statistical methods, future updates are planned. The current implementation provides a solid foundation for most causal inference workflows.
 
 References
 ----------
@@ -409,6 +651,30 @@ Canonical import: `from path.to.crca import CRCAAgent`  (or use `from path.to.cr
 
 Changelog
 ---------
+
+- v1.2.0
+  - Major feature expansion: advanced analysis suite
+    - **Batch prediction**: Added `_predict_outcomes_batch()` for efficient vectorized predictions with `enable_batch_predict` and `max_batch_size` parameters
+    - **Async support**: Full async/await support with `run_async()`, `quantify_uncertainty_async()`, `granger_causality_test_async()`, `vector_autoregression_estimation_async()`
+    - **Optimization methods**: 
+      - `gradient_based_intervention_optimization()` — scipy-based gradient optimization with constraints
+      - `bellman_optimal_intervention()` — dynamic programming multi-step optimization
+    - **Time-series analysis**:
+      - `granger_causality_test()` — Granger causality testing with F-statistics
+      - `vector_autoregression_estimation()` — VAR model estimation
+    - **Bayesian inference**: `bayesian_edge_inference()` — Bayesian edge strength estimation with credible intervals
+    - **Information theory**: `compute_information_theoretic_measures()` — entropy and mutual information calculations
+    - **Advanced analysis**:
+      - `sensitivity_analysis()` — sensitivity and elasticity analysis
+      - `deep_root_cause_analysis()` — comprehensive root cause identification with path strength
+      - `shapley_value_attribution()` — Shapley value for fair variable attribution
+      - `multi_layer_whatif_analysis()` — multi-layer cascading scenario analysis
+      - `explore_alternate_realities()` — reality exploration with optimization
+    - **Performance improvements**:
+      - Parallel bootstrap sampling via `bootstrap_workers` parameter
+      - Reproducible randomness via `seed` parameter
+      - Optional dependency detection (pandas/scipy) with graceful fallbacks
+    - **Code optimization**: File size reduced to under 50k characters while maintaining full functionality
 
 - v1.1.0
   - Small production hardening pass:
