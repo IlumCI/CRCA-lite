@@ -1,26 +1,59 @@
 [project]
 name = "cr-ca"
-version = "1.1.0"
-description = "CR-CA Lite — lightweight causal reasoning agent (CR-CA)"
+version = "1.2.0"
+description = "CR-CA Lite — lightweight causal reasoning agent with advanced analysis suite (CR-CA)"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-  { name="A. Ilum LeiLion", email="a.leilionas@vk.com" }
+  { name="Ilum", email="a.leilionas@vk.com" }
 ]
 dependencies = [
-  "rustworkx>=0.12.0",
+  # Core Scientific Computing
   "numpy>=1.23",
   "pandas>=1.5",
-  "matplotlib>=3.5",
-  "seaborn>=0.11",
-  "requests>=2.28",
-  "swarms",
-  "loguru",
-  "litellm>=0.1",
+  "scipy>=1.10",
+  # Causal Inference & Graph Theory
+  "rustworkx>=0.12.0",
+  "networkx>=3.0",
+  "dowhy>=0.11",
+  # Optimization
+  "cvxpy>=1.4",
+  "optuna>=3.0",
+  # Machine Learning
+  "torch>=2.0.0",
+  "scikit-learn>=1.3",
+  "xgboost>=2.0",
+  "lightgbm>=4.0",
+  "numba>=0.58",
+  # Data Sources & APIs
+  "yfinance>=0.2.0",
   "pycoingecko>=3.0",
   "pytrends>=4.8.0",
   "praw>=7.0",
+  # Trading & Exchanges
+  "ccxt>=4.0",
+  "websockets>=11.0",
+  # Blockchain
+  "web3>=6.0",
+  # Visualization
+  "matplotlib>=3.5",
+  "seaborn>=0.11",
+  "pillow>=10.0",
+  "reportlab>=4.0.0",
+  # Utilities
+  "requests>=2.28",
+  "loguru>=0.7",
+  "python-dotenv>=1.0",
   "python-dateutil>=2.8",
+  "pyyaml>=6.0",
+  "tqdm>=4.65.0",
+  # UI
+  "rich>=13.0",
+  # Caching
+  "redis>=5.0",
+  # Framework
+  "swarms",
+  "litellm>=0.1",
 ]
 
 [tool.pytest.ini_options]
