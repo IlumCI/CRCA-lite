@@ -1967,3 +1967,4 @@ class CRCAAgent(Agent):
         return await loop.run_in_executor(None, lambda: self.vector_autoregression_estimation(df=df, variables=variables, max_lag=max_lag))
 
 
+
