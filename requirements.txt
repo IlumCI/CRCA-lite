@@ -24,6 +24,8 @@ yfinance>=0.2.0
 pycoingecko>=3.0
 pytrends>=4.8.0
 praw>=7.0
+shodan>=1.30.0
+geoip2>=4.7.0
 
 # Trading & Exchanges
 ccxt>=4.0
@@ -51,6 +53,14 @@ rich>=13.0
 
 # Caching
 redis>=5.0
+
+# Data Validation & Serialization
+pydantic>=2.0
+toml>=0.10.2
+
+# MCP (Model Context Protocol)
+mcp>=0.9.0
+openai>=1.0.0
 
 # Framework
 swarms
