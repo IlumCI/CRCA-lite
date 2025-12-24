@@ -1,0 +1,25 @@
+# Pridnestrovia Real-Time Control System Configuration
+# 
+# Copy this file to config.yaml and fill in your actual API keys.
+# DO NOT commit config.yaml to version control!
+
+# Treasury API Configuration
+treasury_api_url: "https://api.pridnestrovia.gov/treasury"
+treasury_api_key: "YOUR_TREASURY_API_KEY_HERE"
+
+# Ministries API Configuration
+ministries_api_url: "https://api.pridnestrovia.gov/ministries"
+ministries_api_key: "YOUR_MINISTRIES_API_KEY_HERE"
+
+# Central Bank API Configuration
+central_bank_api_url: "https://api.pridnestrovia.gov/centralbank"
+central_bank_api_key: "YOUR_CENTRAL_BANK_API_KEY_HERE"
+
+# Optional: Custom update frequencies (in seconds)
+# data_update_frequency: 86400  # Daily (default)
+# monitoring_frequency: 300      # Every 5 minutes (default)
+
+# Optional: Safety thresholds
+# major_change_threshold: 0.10   # 10% (default)
+# confidence_threshold: 0.95     # 95% (default)
+
