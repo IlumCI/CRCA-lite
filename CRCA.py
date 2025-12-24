@@ -764,7 +764,15 @@ class CRCAAgent(Agent):
             "You are a Causal Reasoning with Counterfactual Analysis (CR-CA) agent.\n"
             f"Problem: {task}\n"
             f"Current causal graph has {len(self.causal_graph)} variables and "
-            f"{sum(len(children) for children in self.causal_graph.values())} relationships.\n"
+            f"{sum(len(children) for children in self.causal_graph.values())} relationships.\n\n"
+            "CRITICAL: You MUST use the generate_causal_analysis tool to provide your analysis.\n"
+            "The variables have already been extracted. Now you need to generate the causal analysis.\n"
+            "Do NOT call extract_causal_variables again. You MUST call generate_causal_analysis with:\n"
+            "- causal_analysis: Detailed analysis of causal relationships and mechanisms\n"
+            "- intervention_planning: Planned interventions to test causal hypotheses\n"
+            "- counterfactual_scenarios: List of what-if scenarios (array of objects)\n"
+            "- causal_strength_assessment: Assessment of relationship strengths and confounders\n"
+            "- optimal_solution: Recommended solution based on analysis\n"
         )
 
     def _build_variable_extraction_prompt(self, task: str) -> str:
@@ -2128,7 +2136,28 @@ IMPORTANT:
                         logger.info(f"Found causal analysis in memory (type: {entry_type}, length: {len(final_analysis)})")
                         break
         
-        # If no analysis found in memory, use the LLM's response as fallback
+        # If no analysis found in memory, use ML-based generation as fallback
+        if not final_analysis:
+            logger.warning("No causal analysis found in causal_memory, using ML-based generation fallback")
+            ml_analysis = self._generate_causal_analysis_ml_based(task)
+            if ml_analysis and ml_analysis.get('causal_analysis'):
+                # Use the returned analysis directly
+                final_analysis = ml_analysis.get('causal_analysis', '')
+                analysis_result = {
+                    'type': 'analysis',
+                    'causal_analysis': final_analysis,
+                    'intervention_planning': ml_analysis.get('intervention_planning', ''),
+                    'counterfactual_scenarios': ml_analysis.get('counterfactual_scenarios', []),
+                    'causal_strength_assessment': ml_analysis.get('causal_strength_assessment', ''),
+                    'optimal_solution': ml_analysis.get('optimal_solution', ''),
+                }
+                # Also ensure it's stored in memory for consistency
+                if analysis_result not in self.causal_memory:
+                    self.causal_memory.append(analysis_result)
+                if final_analysis:
+                    logger.info(f"Found causal analysis from ML-based fallback (length: {len(final_analysis)})")
+        
+        # If still no analysis found, use the LLM's response as final fallback
         if not final_analysis:
             logger.warning("No causal analysis found in causal_memory, attempting fallback from conversation history")
             # Try to get the last response from the conversation
