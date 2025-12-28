@@ -1,4 +1,5 @@
 import os,csv,time,random,json,re,threading,asyncio,hmac,hashlib,base64,subprocess
+import sys
 from typing import Dict,Optional,Any,List,Tuple,Union,Callable
 from datetime import datetime,timedelta
 from collections import defaultdict
@@ -8,12 +9,18 @@ import requests,pandas as pd,numpy as np
 from loguru import logger
 from dotenv import load_dotenv
 from swarms import Agent
+
+# Add parent directory to path for importing CRCA
+_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
+
 from CRCA import CRCAAgent
 try:from rich.console import Console;from rich.table import Table;from rich.panel import Panel;from rich.columns import Columns;from rich.layout import Layout;from rich.text import Text;from rich import box;from rich.align import Align;from rich.progress import Progress,SpinnerColumn,TextColumn,BarColumn,TimeRemainingColumn;RICH_AVAILABLE=True
 except ImportError:RICH_AVAILABLE=False;Console=None
 DAYS_BACK=90
 AUTO_MULTI_ASSET=True
-MAX_ASSETS_LIMIT=20
+MAX_ASSETS_LIMIT=10
 MIN_ASSET_VALUE=1.5
 VERBOSE_LOGGING=False
 PRIORITY_WEIGHTS={'predicted_return':.45,'volume':.15,'volatility':.15,'trend_strength':.1,'signal_quality':.1,'market_cap':.05}
@@ -1723,7 +1730,7 @@ class QuantTradingAgent:
 				avg_signal_score=np.mean([v.get('score',.0)for v in signal_scores.values()if isinstance(v,dict)])
 				if not np.isnan(avg_signal_score):confidence_factors.append(avg_signal_score*.9)
 			heuristic_confidence=min(1.,max(.0,sum(confidence_factors)));statistical_confidence=(lambda ci_1d:(lambda ci_width,ci_mean:.9 if(relative_width:=ci_width/abs(ci_mean)if abs(ci_mean)>1e-06 else 1.)<.1 else .75 if relative_width<.2 else .6 if relative_width<.3 else .45 if relative_width<.5 else .3)(ci_1d['upper']-ci_1d['lower'],ci_1d['mean'])if'lower'in ci_1d and'upper'in ci_1d and'mean'in ci_1d and ci_1d['mean']>0 else .5)(confidence_intervals.get('1d',{}))if'1d'in confidence_intervals else .5;ensemble_confidence=(lambda latest_std:.85 if(cv:=abs(latest_std)/abs(latest_pred))<.2 else .7 if cv<.3 else .55 if cv<.5 else .4)(pred_std[-1])if len(pred_std)>0 and abs(latest_pred)>1e-06 else .5;raw_confidence=min(1.,max(.0,.4*heuristic_confidence+.35*statistical_confidence+.25*ensemble_confidence));confidence=self.confidence_calibrator.calibrate_prob(raw_confidence)if hasattr(self,'confidence_calibrator')and self.confidence_calibrator else raw_confidence;confidence=min(1.,max(.0,confidence));causal_score,causal_block=self._evaluate_causal_stability()
-			if causal_block:confidence=.0;explanations.append(f"⚠️ Causal block: unstable causal structure (score {causal_score:.2f})")
+			if causal_block:confidence=.0;explanations.append(f" Causal block: unstable causal structure (score {causal_score:.2f})")
 			else:multiplier=max(.5,min(1.,causal_score));confidence*=multiplier;explanations.append(f"Causal stability: score {causal_score:.2f}, confidence scaled by {multiplier:.2f}")
 			if VERBOSE_LOGGING:calib_info=f" (calibrated: {confidence:.0%})"if hasattr(self,'confidence_calibrator')and self.confidence_calibrator.isotonic_model else'';explanations.append(f"Confidence breakdown: heuristic={heuristic_confidence:.0%}, statistical={statistical_confidence:.0%}, ensemble={ensemble_confidence:.0%}, raw={raw_confidence:.0%}{calib_info}")
 			return confidence,explanations
@@ -1856,12 +1863,12 @@ class QuantTradingAgent:
 		if is_prediction_in_returns:uncertainty_ratio=abs(latest_std)/abs(latest_pred)if abs(latest_pred)>1e-06 else abs(latest_std)*current_price/current_price if current_price>0 else 1.
 		elif current_price>0:pred_return=latest_pred/current_price;std_return=latest_std/current_price if latest_std>0 else abs(pred_return)*.1;uncertainty_ratio=abs(std_return)/abs(pred_return)if abs(pred_return)>1e-06 else abs(std_return)if abs(std_return)>0 else 1.
 		else:uncertainty_ratio=1.
-		if uncertainty_ratio>1e1:logger.warning(f"⚠️ Suspiciously high uncertainty ratio: {uncertainty_ratio:.2f} (pred={latest_pred:.6f}, std={latest_std:.6f}, price={current_price:.2f}). Using fallback calculation.");fallback_uncertainty=min(2.,max(.1,abs(latest_std)/max(abs(latest_pred),current_price*.01)));uncertainty_ratio=fallback_uncertainty
+		if uncertainty_ratio>1e1:logger.warning(f"!!! Suspiciously high uncertainty ratio: {uncertainty_ratio:.2f} (pred={latest_pred:.6f}, std={latest_std:.6f}, price={current_price:.2f}). Using fallback calculation.");fallback_uncertainty=min(2.,max(.1,abs(latest_std)/max(abs(latest_pred),current_price*.01)));uncertainty_ratio=fallback_uncertainty
 		uncertainty_ratio=max(.01,min(uncertainty_ratio,2.))
 		if uncertainty_ratio<.3:confidence_factors.append(.15);explanations.append(f"Low prediction uncertainty ({uncertainty_ratio:.2%})")
 		elif uncertainty_ratio<.5:confidence_factors.append(.1);explanations.append(f"Moderate prediction uncertainty ({uncertainty_ratio:.2%})")
 		elif uncertainty_ratio<1.:confidence_factors.append(.05);explanations.append(f"High prediction uncertainty ({uncertainty_ratio:.2%}) - reduces confidence")
-		else:confidence_factors.append(.0);explanations.append(f"{"🚨 Extremely"if uncertainty_ratio>1.5 else"Very"} high prediction uncertainty ({uncertainty_ratio:.2%}) - {"very "if uncertainty_ratio>1.5 else""}low directional confidence")
+		else:confidence_factors.append(.0);explanations.append(f"{"!!! Extremely"if uncertainty_ratio>1.5 else"Very"} high prediction uncertainty ({uncertainty_ratio:.2%}) - {"very "if uncertainty_ratio>1.5 else""}low directional confidence")
 		if volatility<.2:confidence_factors.append(.1);explanations.append(f"Low market volatility ({volatility:.2%})")
 		elif volatility<.4:confidence_factors.append(.05);explanations.append(f"Moderate volatility ({volatility:.2%})")
 		else:confidence_factors.append(.0);explanations.append(f"High volatility ({volatility:.2%}) - increased risk")
@@ -1880,17 +1887,17 @@ class QuantTradingAgent:
 		if conservative_mode:extreme_uncertainty=2.;very_high_uncertainty=1.5;high_uncertainty=1.2;moderate_uncertainty=.8
 		elif aggressive_mode:extreme_uncertainty=5.;very_high_uncertainty=4.;high_uncertainty=3.;moderate_uncertainty=2.
 		else:extreme_uncertainty=3.;very_high_uncertainty=2.;high_uncertainty=1.5;moderate_uncertainty=1.
-		if uncertainty_ratio>extreme_uncertainty:block_trade_due_to_uncertainty=True;explanations.append(f"🚫 Trade blocked: Extremely high prediction uncertainty ({uncertainty_ratio:.2%})")
-		elif uncertainty_ratio>very_high_uncertainty:min_confidence_threshold=max(.8,base_threshold+.15);explanations.append(f"⚠️ Very high uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
-		elif uncertainty_ratio>high_uncertainty:min_confidence_threshold=max(.75,base_threshold+.1);explanations.append(f"⚠️ High uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
-		elif uncertainty_ratio>moderate_uncertainty:min_confidence_threshold=max(.7,base_threshold+.05);explanations.append(f"⚠️ Moderate-high uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
+		if uncertainty_ratio>extreme_uncertainty:block_trade_due_to_uncertainty=True;explanations.append(f"!!! Trade blocked: Extremely high prediction uncertainty ({uncertainty_ratio:.2%})")
+		elif uncertainty_ratio>very_high_uncertainty:min_confidence_threshold=max(.8,base_threshold+.15);explanations.append(f"!!! Very high uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
+		elif uncertainty_ratio>high_uncertainty:min_confidence_threshold=max(.75,base_threshold+.1);explanations.append(f"!!! High uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
+		elif uncertainty_ratio>moderate_uncertainty:min_confidence_threshold=max(.7,base_threshold+.05);explanations.append(f"!!! Moderate-high uncertainty ({uncertainty_ratio:.2%}) - requiring {min_confidence_threshold:.0%} confidence")
 		elif uncertainty_ratio>.7:min_confidence_threshold=base_threshold+.03
 		avg_signal_score=pred_metadata.get('avg_signal_score',.5)
 		if conservative_mode:min_signal_quality=.35
 		elif aggressive_mode:min_signal_quality=.1
 		else:min_signal_quality=.2
 		causal_score,causal_block=self._evaluate_causal_stability()
-		if causal_block:explanations.insert(0,f"🚫 HOLD: Causal block (score {causal_score:.2f})");return{'signal':'HOLD','confidence':confidence,'explanations':explanations,'recommended_position_size':.0,'top_signals':top_signals,'avg_signal_score':avg_signal_score,'expected_return':expected_return,'volatility':volatility,'causal_score':causal_score,'causal_block':causal_block}
+		if causal_block:explanations.insert(0,f"!!! HOLD: Causal block (score {causal_score:.2f})");return{'signal':'HOLD','confidence':confidence,'explanations':explanations,'recommended_position_size':.0,'top_signals':top_signals,'avg_signal_score':avg_signal_score,'expected_return':expected_return,'volatility':volatility,'causal_score':causal_score,'causal_block':causal_block}
 		else:damp=max(.5,min(1.,causal_score));confidence*=damp;avg_signal_score*=damp
 		if VERBOSE_LOGGING:
 			explanations.append(f"DEBUG: signal_strength={signal_strength:.3f}, confidence={confidence:.1%}, threshold={min_confidence_threshold:.1%}, avg_signal_score={avg_signal_score:.2f}, uncertainty={uncertainty_ratio:.2f}, block_trade={block_trade_due_to_uncertainty}, expected_return={expected_return:.4f}")
@@ -1939,7 +1946,7 @@ class QuantTradingAgent:
 			if avg_signal_score<min_signal_quality:hold_reasons.append(f"insufficient signal quality ({avg_signal_score:.2f}, required: {min_signal_quality:.2f})")
 			if block_trade_due_to_uncertainty:hold_reasons.append(f"extremely high uncertainty ({uncertainty_ratio:.2%})")
 			explanations.insert(0,f"HOLD: {", ".join(hold_reasons)if hold_reasons else f"Signal too weak ({signal_strength:.3f} strength) or low confidence ({confidence:.0%}, required: {min_confidence_threshold:.0%})"}")
-			if uncertainty_ratio>1. and confidence<=min_confidence_threshold:explanations.append(f"⚠️ High uncertainty ({uncertainty_ratio:.2%}) requires {min_confidence_threshold:.0%} confidence, but only {confidence:.0%} achieved")
+			if uncertainty_ratio>1. and confidence<=min_confidence_threshold:explanations.append(f"!!! High uncertainty ({uncertainty_ratio:.2%}) requires {min_confidence_threshold:.0%} confidence, but only {confidence:.0%} achieved")
 		if signal!='HOLD':
 			if self.longterm_mode and hasattr(self,'causal_engine')and self.causal_engine:
 				try:
@@ -1947,33 +1954,33 @@ class QuantTradingAgent:
 					if not causal_validation.get('approved',False):signal='HOLD';explanations.insert(0,f"🔍 Longterm mode: CRCAAgent validation failed - {causal_validation.get("reason","Causal analysis does not support this trade")}");logger.info(f"Longterm mode: Trade blocked by CRCAAgent validation for {symbol or"MAIN"}")
 				except Exception as e:
 					logger.warning(f"CRCAAgent validation failed: {e}, proceeding with caution")
-					if self.longterm_mode:explanations.append(f"⚠️ CRCAAgent validation error, using extra caution")
+					if self.longterm_mode:explanations.append(f"!!! CRCAAgent validation error, using extra caution")
 			try:
 				position_sizing_method=getattr(self,'position_sizing_method','kelly')
-				if position_sizing_method not in['kelly','risk_parity','target_vol']:position_sizing_method='kelly';explanations.append('⚠️ Invalid position sizing method, using Kelly')
-				if volatility is None or isinstance(volatility,float)and(np.isnan(volatility)or np.isinf(volatility)):volatility=.02;explanations.append('⚠️ Volatility data unavailable, using default 2%')
-				elif volatility<=0:volatility=.02;explanations.append('⚠️ Invalid volatility value, using default 2%')
+				if position_sizing_method not in['kelly','risk_parity','target_vol']:position_sizing_method='kelly';explanations.append('!!! Invalid position sizing method, using Kelly')
+				if volatility is None or isinstance(volatility,float)and(np.isnan(volatility)or np.isinf(volatility)):volatility=.02;explanations.append('!!! Volatility data unavailable, using default 2%')
+				elif volatility<=0:volatility=.02;explanations.append('!!! Invalid volatility value, using default 2%')
 				else:
-					if volatility>2.:volatility/=1e2;explanations.append('ℹ️ High volatility normalized from percent scale')
-					if volatility>.8:volatility=.8;explanations.append('⚠️ Extremely high volatility capped at 80%')
+					if volatility>2.:volatility/=1e2;explanations.append('! High volatility normalized from percent scale')
+					if volatility>.8:volatility=.8;explanations.append('!!! Extremely high volatility capped at 80%')
 				if uncertainty_ratio is None or isinstance(uncertainty_ratio,float)and(np.isnan(uncertainty_ratio)or np.isinf(uncertainty_ratio)):uncertainty_ratio=1.;explanations.append('⚠️ Uncertainty ratio invalid, using default 100%')
 				if latest_pred is None or isinstance(latest_pred,float)and(np.isnan(latest_pred)or np.isinf(latest_pred)):latest_pred=expected_return*current_price if expected_return is not None and current_price>0 else .0
 				if current_price is None or current_price<=0:current_price=1.
 				er=latest_pred/current_price if abs(latest_pred)>1. and current_price>0 else latest_pred
-				if er is None or not isinstance(er,(int,float))or np.isnan(er)or np.isinf(er):er=.0;explanations.append('⚠️ Invalid expected return for position sizing, using 0%')
-				if volatility is None or not isinstance(volatility,(int,float))or np.isnan(volatility)or np.isinf(volatility)or volatility<=0:volatility=.02;explanations.append('⚠️ Invalid volatility for position sizing, using 2%')
+				if er is None or not isinstance(er,(int,float))or np.isnan(er)or np.isinf(er):er=.0;explanations.append('!!! Invalid expected return for position sizing, using 0%')
+				if volatility is None or not isinstance(volatility,(int,float))or np.isnan(volatility)or np.isinf(volatility)or volatility<=0:volatility=.02;explanations.append('!!! Invalid volatility for position sizing, using 2%')
 				if uncertainty_ratio is None or not isinstance(uncertainty_ratio,(int,float))or np.isnan(uncertainty_ratio)or np.isinf(uncertainty_ratio):uncertainty_ratio=1.;explanations.append('⚠️ Invalid uncertainty ratio for position sizing, using 100%')
-				if confidence is None or not isinstance(confidence,(int,float))or np.isnan(confidence)or np.isinf(confidence):confidence=.5;explanations.append('⚠️ Invalid confidence for position sizing, using 50%')
-				if max_position_size is None or not isinstance(max_position_size,(int,float))or np.isnan(max_position_size)or max_position_size<=0:max_position_size=.1;explanations.append('⚠️ Invalid max position size, using 10%')
+				if confidence is None or not isinstance(confidence,(int,float))or np.isnan(confidence)or np.isinf(confidence):confidence=.5;explanations.append('!!! Invalid confidence for position sizing, using 50%')
+				if max_position_size is None or not isinstance(max_position_size,(int,float))or np.isnan(max_position_size)or max_position_size<=0:max_position_size=.1;explanations.append('!!! Invalid max position size, using 10%')
 				base_size=min((abs(er/(volatility*volatility))*.25 if position_sizing_method=='kelly'else .1/volatility if position_sizing_method=='risk_parity'else getattr(self,'target_volatility',.15)/volatility if position_sizing_method=='target_vol'else abs(er)/(getattr(self,'risk_aversion',2.)*volatility*volatility))if volatility>1e-06 else abs(weight)*.1,max_position_size);recommended_size=max(.01,min(max_position_size,(lambda vol_adj:vol_adj*(.7 if volatility>.4 else .85 if volatility>.3 else 1.)*(.3 if(unc_ratio_sizing:=min(uncertainty_ratio,2.))>1.5 else .4 if unc_ratio_sizing>1. else .6 if unc_ratio_sizing>.7 else .75 if unc_ratio_sizing>.5 else 1.)*getattr(self,'position_size_multiplier',1.))(base_size*confidence*(1-min(volatility,.5)))))
 				if self.longterm_mode:recommended_size=min(recommended_size,getattr(self,'max_position_size',.005));explanations.append(f"🔍 Longterm mode: Position size capped at {recommended_size:.2%}")
 				if aggressive_mode and not self.longterm_mode:recommended_size=min(max_position_size,recommended_size*1.5)
 				uncertainty_ratio=uncertainty_ratio if isinstance(uncertainty_ratio,(int,float))and not np.isnan(uncertainty_ratio)else 1.
-				if min(uncertainty_ratio,2.)>1.5:explanations.append(f"⚠️ Extreme uncertainty: Position size reduced by 70%")
+				if min(uncertainty_ratio,2.)>1.5:explanations.append(f"!!! Extreme uncertainty: Position size reduced by 70%")
 				if hasattr(self,'risk_monitor')and self.risk_monitor:
 					account_size=getattr(self,'account_size',TRADING_CONFIG['account_size']);portfolio_value=account_size;stop_loss_distance=abs((stop_loss-entry_level)/entry_level)if stop_loss and entry_level>0 else .02;current_positions={k:v.get('size',.0)/portfolio_value if portfolio_value>0 else .0 for(k,v)in self.positions.items()}if hasattr(self,'positions')else{};is_valid,reason,adjusted_size=self.risk_monitor.pre_trade_check(signal=signal,position_size=recommended_size,current_positions=current_positions,portfolio_value=portfolio_value,stop_loss_distance=stop_loss_distance,asset_volatility=volatility,asset_type=getattr(self,'asset_types',{}).get(symbol,'crypto'))
 					if not is_valid:
-						if VERBOSE_LOGGING:explanations.append(f"⚠️ Risk limit: {reason}")
+						if VERBOSE_LOGGING:explanations.append(f"!!! Risk limit: {reason}")
 						recommended_size=adjusted_size
 						if recommended_size<.001:recommended_size,signal=.0,'HOLD';explanations.append('Trade cancelled: Position size too small after risk adjustments')
 				account_size=getattr(self,'account_size',TRADING_CONFIG['account_size']);trade_value=recommended_size*account_size;daily_volume=float(self.price_data['volume'].iloc[-20:].mean()*current_price)if hasattr(self,'price_data')and not self.price_data.empty and'volume'in self.price_data.columns and current_price>0 else None
@@ -2068,7 +2075,7 @@ class QuantTradingAgent:
 						if trade_result:
 							total_trades+=1
 							if trade_result.get('status')=='success':self._record_live_fill(symbol=symbol,side='SELL',amount=trade_result.get('amount',.0),price=trade_result.get('price',all_current_prices.get(symbol,.0)))
-							logger.debug(f"🔄 Rotation: Exited {symbol} (score: {exit_info["score"]:.3f})")if VERBOSE_LOGGING else None
+							logger.debug(f"!!! Rotation: Exited {symbol} (score: {exit_info["score"]:.3f})")if VERBOSE_LOGGING else None
 			for entry_info in rotation_trades.get('entries',[]):
 				symbol=entry_info['symbol']
 				if not any(a.get('symbol','').upper()==symbol for a in self.assets):self.assets.append({'symbol':symbol,'type':'crypto'})
@@ -2084,7 +2091,7 @@ class QuantTradingAgent:
 		batch_results,total_trades=[],0
 		for batch_idx in range(0,len(sorted_assets),BATCH_SIZE):
 			batch=sorted_assets[batch_idx:batch_idx+BATCH_SIZE];batch_symbols=[a.get('symbol','').upper()for a in batch]
-			if VERBOSE_LOGGING:logger.debug(f"📦 Processing batch {batch_idx//BATCH_SIZE+1}: {", ".join(batch_symbols)}")
+			if VERBOSE_LOGGING:logger.debug(f"! Processing batch {batch_idx//BATCH_SIZE+1}: {", ".join(batch_symbols)}")
 			batch_predictions={s:all_predictions.get(s)for s in batch_symbols if s in all_predictions};batch_metadata={s:all_metadata.get(s)for s in batch_symbols if s in all_metadata}
 			if not batch_predictions:continue
 			expected_returns_dict,batch_predictions_arrays={},{}
@@ -2385,13 +2392,13 @@ class QuantTradingAgent:
 					if'returns'in self.signals_df.columns:returns=self.signals_df['returns'].dropna();volatility=returns.std()*np.sqrt(252)if len(returns)>1 else .0;sharpe_ratio=returns.mean()*252/(volatility+1e-06)if len(returns)>1 and volatility>0 else .0;cvar_95=returns[returns<=np.percentile(returns,5)].mean()if len(returns)>10 else returns.mean()-1.65*returns.std()if len(returns)>1 else .0
 					else:volatility,sharpe_ratio,cvar_95=.0,.0,.0
 					decision_result=self._make_trading_decision(portfolio_weights=portfolio_weights,predictions=predictions,signal_scores=signal_scores,pred_metadata=pred_metadata,confidence_intervals=confidence_intervals,volatility=volatility,current_price=current_price,max_position_size=self.risk_monitor.max_position_size);signal,confidence,signal_explanations=decision_result['signal'],decision_result['confidence'],decision_result['explanations'];original_signal,original_position_size=signal,decision_result['recommended_position_size'];circuit_ok,circuit_msg=self.circuit_breaker.check_circuit()
-					if not circuit_ok:logger.warning(f"Circuit breaker tripped: {circuit_msg}");signal_explanations.insert(0,f"🚫 Circuit breaker activated: {circuit_msg}");progress.update(task,completed=len(workflow_steps));return{'error':f"Circuit breaker: {circuit_msg}",'signal':'HOLD','original_signal':original_signal,'current_price':current_price,'signal_explanations':signal_explanations,'monitoring_summary':self.monitoring.get_summary()}
+					if not circuit_ok:logger.warning(f"Circuit breaker tripped: {circuit_msg}");signal_explanations.insert(0,f"!!! Circuit breaker activated: {circuit_msg}");progress.update(task,completed=len(workflow_steps));return{'error':f"Circuit breaker: {circuit_msg}",'signal':'HOLD','original_signal':original_signal,'current_price':current_price,'signal_explanations':signal_explanations,'monitoring_summary':self.monitoring.get_summary()}
 				if signal!='HOLD':
 					position_size=abs(decision_result['recommended_position_size']);portfolio_value=portfolio_metrics.get('current_portfolio_value',getattr(self,'account_size',current_price));current_positions=self.positions if hasattr(self,'positions')else{};risk_ok,risk_msg=self.risk_monitor.pre_trade_check(signal=signal,position_size=position_size,current_positions=current_positions,portfolio_value=portfolio_value)
 					if not risk_ok:
 						max_allowed_size=self.risk_monitor.max_position_size
 						if position_size>max_allowed_size:decision_result['recommended_position_size']=np.sign(decision_result['recommended_position_size'])*max_allowed_size;signal_explanations.append(f"⚠️ Position size adjusted from {position_size:.2%} to {max_allowed_size:.2%} due to risk limits")
-						else:signal='HOLD';signal_explanations.insert(0,f"🚫 Trade blocked: {risk_msg}")
+						else:signal='HOLD';signal_explanations.insert(0,f"!!! Trade blocked: {risk_msg}")
 					self.monitoring.monitor_signal_health(signal_name='ensemble',score=confidence,decay=pred_metadata.get('prediction_std',[.0])[-1]if pred_metadata.get('prediction_std')else .0);progress.update(task,completed=len(workflow_steps))
 				return{'signal':signal,'original_signal':original_signal if signal!=original_signal else None,'confidence':confidence,'current_price':current_price,'price_targets':price_targets,'confidence_intervals':confidence_intervals,'signal_explanations':signal_explanations,'top_signals':sorted([(k,v.get('score',.0))for(k,v)in signal_scores.items()],key=lambda x:x[1],reverse=True)[:10],'signal_contributions':pred_metadata.get('signal_contributions',{}),'risk_metrics':{'volatility':volatility,'sharpe_ratio':sharpe_ratio,'cvar_95':cvar_95,'prediction_uncertainty':latest_std},'portfolio_weight':portfolio_weights[0]if len(portfolio_weights)>0 else .0,'recommended_position_size':decision_result['recommended_position_size'],'original_position_size':original_position_size if abs(original_position_size)!=abs(decision_result['recommended_position_size'])else None,'expected_return':latest_pred,'predictions':predictions.tolist()if len(predictions)>0 else[],'regime':self.regime_detector.detect_volatility_regime(self.signals_df),'entry_level':decision_result.get('entry_level'),'stop_loss':decision_result.get('stop_loss'),'take_profit':decision_result.get('take_profit'),'monitoring_summary':self.monitoring.get_summary(),'portfolio_metrics':self._calculate_portfolio_metrics()}
 		else:
@@ -2436,20 +2443,20 @@ class QuantTradingAgent:
 		decision_result=self._make_trading_decision(portfolio_weights=portfolio_weights,predictions=predictions,signal_scores=signal_scores,pred_metadata=pred_metadata,confidence_intervals=confidence_intervals,volatility=volatility,current_price=current_price,max_position_size=self.risk_monitor.max_position_size);signal,confidence,signal_explanations=decision_result['signal'],decision_result['confidence'],decision_result['explanations']
 		if self.system_state in('COOLDOWN','EXIT'):signal='EXIT'if self.system_state=='EXIT'else'COOLDOWN';decision_result['recommended_position_size']=.0;decision_result['explanations']=signal_explanations+[f"[{signal}] Observing only; no trades placed"]
 		original_signal,original_position_size=signal,decision_result['recommended_position_size'];circuit_ok,circuit_msg=self.circuit_breaker.check_circuit()
-		if not circuit_ok:logger.warning(f"Circuit breaker tripped: {circuit_msg}");signal_explanations.insert(0,f"🚫 Circuit breaker activated: {circuit_msg}");return{'error':f"Circuit breaker: {circuit_msg}",'signal':'HOLD','original_signal':original_signal,'current_price':current_price,'signal_explanations':signal_explanations,'monitoring_summary':self.monitoring.get_summary()}
+		if not circuit_ok:logger.warning(f"Circuit breaker tripped: {circuit_msg}");signal_explanations.insert(0,f"!!! Circuit breaker activated: {circuit_msg}");return{'error':f"Circuit breaker: {circuit_msg}",'signal':'HOLD','original_signal':original_signal,'current_price':current_price,'signal_explanations':signal_explanations,'monitoring_summary':self.monitoring.get_summary()}
 		if signal not in['HOLD','COOLDOWN']:
 			position_size=abs(decision_result['recommended_position_size']);portfolio_value=decision_result.get('portfolio_metrics',{}).get('current_portfolio_value',getattr(self,'account_size',current_price));current_positions=self.positions if hasattr(self,'positions')else{};risk_ok,risk_msg=self.risk_monitor.pre_trade_check(signal=signal,position_size=position_size,current_positions=current_positions,portfolio_value=portfolio_value)
 			if not risk_ok:
 				max_allowed_size=self.risk_monitor.max_position_size
-				if position_size>max_allowed_size:decision_result['recommended_position_size']=np.sign(decision_result['recommended_position_size'])*max_allowed_size;signal_explanations.append(f"⚠️ Position size adjusted from {position_size:.2%} to {max_allowed_size:.2%} due to risk limits");logger.info(f"Position size adjusted from {position_size:.2%} to {max_allowed_size:.2%}")
-				else:signal='HOLD';signal_explanations.insert(0,f"🚫 Trade blocked: {risk_msg}");logger.warning(f"Risk check failed: {risk_msg}")
+				if position_size>max_allowed_size:decision_result['recommended_position_size']=np.sign(decision_result['recommended_position_size'])*max_allowed_size;signal_explanations.append(f"!!! Position size adjusted from {position_size:.2%} to {max_allowed_size:.2%} due to risk limits");logger.info(f"Position size adjusted from {position_size:.2%} to {max_allowed_size:.2%}")
+				else:signal='HOLD';signal_explanations.insert(0,f"!!! Trade blocked: {risk_msg}");logger.warning(f"Risk check failed: {risk_msg}")
 		if signal!=original_signal and original_signal!='HOLD':
-			if signal_explanations and signal_explanations[0].startswith(original_signal):signal_explanations[0]=f"🚫 {signal} signal: Changed from {original_signal} due to risk management ({confidence:.0%} confidence)"
+			if signal_explanations and signal_explanations[0].startswith(original_signal):signal_explanations[0]=f"!!! {signal} signal: Changed from {original_signal} due to risk management ({confidence:.0%} confidence)"
 		trade_result=None
 		if self.live_trading_mode and signal not in['HOLD','COOLDOWN']:
-			logger.warning(f"⚠️ LIVE TRADING MODE ENABLED - Executing {signal} trade");expected_return_pct=decision_result.get('expected_return',None);rec_sz=decision_result.get('recommended_position_size',.0)or .0;trade_result=self.execution_engine.execute_trade(signal=signal,size_fraction=min(abs(rec_sz),self.execution_engine.max_position_size),base_symbol=primary_symbol,aggressive_mode=self.aggressive_mode,expected_return_pct=expected_return_pct)
+			logger.warning(f"!!! LIVE TRADING MODE ENABLED - Executing {signal} trade");expected_return_pct=decision_result.get('expected_return',None);rec_sz=decision_result.get('recommended_position_size',.0)or .0;trade_result=self.execution_engine.execute_trade(signal=signal,size_fraction=min(abs(rec_sz),self.execution_engine.max_position_size),base_symbol=primary_symbol,aggressive_mode=self.aggressive_mode,expected_return_pct=expected_return_pct)
 			if trade_result and trade_result.get('status')=='success':filled_amt=trade_result.get('amount',.0);filled_price=trade_result.get('price',current_price);self._record_live_fill(symbol=primary_symbol,side=signal,amount=filled_amt,price=filled_price);filled_val=filled_amt*filled_price;portfolio_value=self._calculate_portfolio_metrics().get('current_portfolio_value',self.account_size if self.account_size>0 else 1.);frac=filled_val/portfolio_value if portfolio_value>0 else .0;decision_result['recommended_position_size']=frac
-		elif signal not in['HOLD','COOLDOWN']:logger.info(f"📊 DEMO MODE: Would execute {signal} trade (live_trading_mode=False)")
+		elif signal not in['HOLD','COOLDOWN']:logger.info(f"!!! DEMO MODE: Would execute {signal} trade (live_trading_mode=False)")
 		if trade_result and'pnl'in trade_result:self.circuit_breaker.record_trade(trade_result['pnl']);self.monitoring.track_pnl(timestamp=datetime.now(),pnl=trade_result['pnl'],position=portfolio_weights[0]if len(portfolio_weights)>0 else .0,price=current_price)
 		self.monitoring.monitor_signal_health(signal_name='ensemble',score=confidence,decay=pred_metadata.get('prediction_std',[.0])[-1]if pred_metadata.get('prediction_std')else .0);causal_score,causal_block=self._evaluate_causal_stability();wallet_snapshot=self._get_live_wallet_snapshot();result={'signal':signal,'original_signal':original_signal if signal!=original_signal else None,'confidence':confidence,'current_price':current_price,'price_targets':price_targets,'confidence_intervals':confidence_intervals,'signal_explanations':signal_explanations,'top_signals':sorted([(k,v.get('score',.0))for(k,v)in signal_scores.items()],key=lambda x:x[1],reverse=True)[:10],'signal_contributions':pred_metadata.get('signal_contributions',{}),'risk_metrics':{'volatility':volatility,'sharpe_ratio':sharpe_ratio,'cvar_95':cvar_95,'prediction_uncertainty':latest_std},'portfolio_weight':portfolio_weights[0]if len(portfolio_weights)>0 else .0,'recommended_position_size':decision_result['recommended_position_size'],'original_position_size':original_position_size if abs(original_position_size)!=abs(decision_result['recommended_position_size'])else None,'expected_return':latest_pred,'predictions':predictions.tolist()if len(predictions)>0 else[],'regime':regime,'best_model':best_model,'entry_level':decision_result.get('entry_level',current_price),'stop_loss':decision_result.get('stop_loss',None),'take_profit':decision_result.get('take_profit',None),'trade_result':trade_result,'monitoring_summary':self.monitoring.get_summary(),'portfolio_metrics':self._calculate_portfolio_metrics(),'system_state':self.system_state,'causal_score':causal_score,'causal_block':causal_block,'wallet':wallet_snapshot}
 		if not isinstance(result,dict):logger.error(f"ERROR: run() about to return {type(result)} instead of dict!");logger.error(f"Result keys: {list(result.keys())if hasattr(result,"keys")else"No keys"}");return{'error':f"Invalid return type in run(): {type(result)}"}
@@ -2502,8 +2509,8 @@ def display_multi_asset_table(console:Console,result:Dict[str,Any],batched_resul
 				live_positions[asset]={'size':bal}
 			positions=live_positions
 	MAX_DISPLAY_ASSETS=20;total_assets=result.get('total_assets',len(all_current_prices))
-	if live_mode:from datetime import datetime;timestamp=datetime.now().strftime('%H:%M:%S');table_title=f"[bold cyan]📊 LIVE ASSET TRADING DECISIONS[/bold cyan] - {timestamp}"
-	else:table_title='[bold cyan]📊 ASSET TRADING DECISIONS[/bold cyan]'
+	if live_mode:from datetime import datetime;timestamp=datetime.now().strftime('%H:%M:%S');table_title=f"[bold cyan]!!!LIVE ASSET TRADING DECISIONS[/bold cyan] - {timestamp}"
+	else:table_title='[bold cyan]!!! ASSET TRADING DECISIONS[/bold cyan]'
 	main_table=Table(title=table_title,show_header=True,header_style='bold cyan',box=box.ROUNDED,border_style='cyan',title_style='bold cyan');main_table.add_column('Asset',style='bold white',width=8);main_table.add_column('Price',justify='right',style='yellow',width=12);main_table.add_column('Signal',justify='center',width=10);main_table.add_column('Confidence',justify='right',width=12);main_table.add_column('Position',justify='right',style='green',width=12);main_table.add_column('Invested',justify='right',style='blue',width=12);main_table.add_column('PnL',justify='right',width=14);main_table.add_column('Expected Return',justify='right',width=14);main_table.add_column('Volatility',justify='right',width=12);main_table.add_column('Uncertainty',justify='right',width=12);main_table.add_column('1D Target',justify='right',style='magenta',width=12);main_table.add_column('7D Target',justify='right',style='magenta',width=12);MAX_DISPLAY_ASSETS=20;total_assets=result.get('total_assets',len(all_current_prices));all_assets_data=[]
 	for batch in batched_results:
 		decisions=batch.get('decisions',{})
@@ -2582,7 +2589,7 @@ def display_multi_asset_table(console:Console,result:Dict[str,Any],batched_resul
 	causal_score=result.get('causal_score',None);causal_block=result.get('causal_block',False)
 	if causal_score is not None and not live_mode:causal_text=f"[bold white]Causal score:[/bold white] {causal_score:.2f}{" 🚫 block"if causal_block else""}";console.print(Panel(causal_text,title='[bold blue]🧠 CAUSAL[/bold blue]',border_style='blue'))
 	if not live_mode:
-		console.print();console.print(Panel.fit('[bold cyan]📈 DETAILED ASSET ANALYSIS[/bold cyan]',border_style='cyan'));console.print();asset_panels=[]
+		console.print();console.print(Panel.fit('[bold cyan]!!! DETAILED ASSET ANALYSIS[/bold cyan]',border_style='cyan'));console.print();asset_panels=[]
 		for asset_data in all_assets_data[:10]:
 			symbol=asset_data['symbol'];decision=asset_data['decision'];info_lines=[];signal=decision.get('signal','HOLD')if isinstance(decision,dict)else'HOLD';confidence=decision.get('confidence',.0)if isinstance(decision,dict)else .0;info_lines.append(f"[bold]Signal:[/bold] {signal} ({confidence:.1%})");explanations=decision.get('explanations',[])if isinstance(decision,dict)else[]
 			if explanations:
@@ -2713,9 +2720,9 @@ async def main()->None:
 if __name__=='__main__':
 	import sys;longterm_mode='--longterm-mode'in sys.argv or os.getenv('LONGTERM_MODE','').lower()=='true'or LONGTERM_MODE_ENABLED;print('='*80)
 	if longterm_mode:print('🔍 QUANT TRADING AGENT - LONGTERM MODE - STARTING');print('='*80);print('📊 LONGTERM MODE ACTIVE:');print('   - Slow, precise long-term investment system');print('   - Predictions for next day/week instead of seconds');print('   - Position evaluation: hourly (trades only with extremely high confidence)');print('   - Prioritizes assets valued less than 1 USD/EUR');print('   - Maximum position size: 0.5% of portfolio');print('   - Minimum confidence threshold: 85%');print('   - Designed for background server operation');print('='*80)
-	else:print('🚀 QUANT TRADING AGENT - STARTING');print('='*80)
-	print('⚠️  SAFETY MODE: Demo mode enabled by default');print('   - NO real trades will be executed');print('   - Only analysis and simulation will run');print('   - To enable live trading, set live_trading_mode=True explicitly')
+	else:print('!!! QUANT TRADING AGENT - STARTING');print('='*80)
+	print('!!! SAFETY MODE: Demo mode enabled by default');print('   - NO real trades will be executed');print('   - Only analysis and simulation will run');print('   - To enable live trading, set live_trading_mode=True explicitly')
 	if not longterm_mode:print('   - To enable longterm mode, use --longterm-mode flag or set LONGTERM_MODE=true')
 	print('='*80);print()
 	try:asyncio.run(main())
-	except KeyboardInterrupt:print('\n⚠️  Stopping agent...')
+	except KeyboardInterrupt:print('\n!!! Stopping agent...')
