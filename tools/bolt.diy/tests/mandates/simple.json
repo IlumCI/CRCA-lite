@@ -1,0 +1,35 @@
+{
+  "mandate_id": "test-simple-001",
+  "objectives": [
+    "Create a hello world React component",
+    "Display the component in a simple HTML page"
+  ],
+  "constraints": {
+    "language": "ts",
+    "maxDependencies": 5,
+    "noNetwork": false,
+    "allowedPackages": ["react", "react-dom"],
+    "maxFileSize": 10000,
+    "maxFiles": 3
+  },
+  "budget": {
+    "token": 10000,
+    "time": 60,
+    "cost": 1.0
+  },
+  "deliverables": [
+    "src/App.tsx",
+    "index.html",
+    "package.json"
+  ],
+  "governance": {
+    "proposal_id": "test-proposal-001",
+    "risk_threshold": 50.0
+  },
+  "iteration_config": {
+    "max_iterations": 1,
+    "test_required": false,
+    "quality_threshold": 0.7
+  }
+}
+

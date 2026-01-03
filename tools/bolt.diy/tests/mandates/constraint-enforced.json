@@ -1,0 +1,36 @@
+{
+  "mandate_id": "test-constraint-enforced-001",
+  "objectives": [
+    "Create a secure password generator",
+    "Ensure no external dependencies",
+    "Follow strict security guidelines"
+  ],
+  "constraints": {
+    "language": "ts",
+    "maxDependencies": 0,
+    "noNetwork": true,
+    "allowedPackages": [],
+    "maxFileSize": 5000,
+    "maxFiles": 2
+  },
+  "budget": {
+    "token": 5000,
+    "time": 30,
+    "cost": 0.5
+  },
+  "deliverables": [
+    "src/password-generator.ts",
+    "index.html"
+  ],
+  "governance": {
+    "proposal_id": "test-proposal-constraint-001",
+    "risk_threshold": 20.0,
+    "approval_chain": ["security-team", "compliance-officer"]
+  },
+  "iteration_config": {
+    "max_iterations": 2,
+    "test_required": true,
+    "quality_threshold": 0.9
+  }
+}
+

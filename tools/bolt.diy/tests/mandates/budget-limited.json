@@ -1,0 +1,34 @@
+{
+  "mandate_id": "test-budget-limited-001",
+  "objectives": [
+    "Create a simple calculator application",
+    "Implement basic arithmetic operations"
+  ],
+  "constraints": {
+    "language": "js",
+    "maxDependencies": 3,
+    "noNetwork": true,
+    "allowedPackages": [],
+    "maxFileSize": 5000,
+    "maxFiles": 2
+  },
+  "budget": {
+    "token": 1000,
+    "time": 10,
+    "cost": 0.1
+  },
+  "deliverables": [
+    "index.html",
+    "calculator.js"
+  ],
+  "governance": {
+    "proposal_id": "test-proposal-budget-001",
+    "risk_threshold": 30.0
+  },
+  "iteration_config": {
+    "max_iterations": 1,
+    "test_required": false,
+    "quality_threshold": 0.5
+  }
+}
+

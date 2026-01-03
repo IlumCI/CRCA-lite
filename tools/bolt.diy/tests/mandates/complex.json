@@ -1,0 +1,53 @@
+{
+  "mandate_id": "test-complex-001",
+  "objectives": [
+    "Create a full-stack web application with React frontend",
+    "Implement user authentication",
+    "Add database integration",
+    "Create REST API endpoints",
+    "Deploy to production"
+  ],
+  "constraints": {
+    "language": "ts",
+    "maxDependencies": 50,
+    "noNetwork": false,
+    "allowedPackages": ["react", "react-dom", "express", "typescript", "node"],
+    "maxFileSize": 100000,
+    "maxFiles": 50
+  },
+  "budget": {
+    "token": 100000,
+    "time": 600,
+    "cost": 10.0
+  },
+  "deliverables": [
+    "src/App.tsx",
+    "src/components/Login.tsx",
+    "src/api/auth.ts",
+    "server/index.ts",
+    "package.json",
+    "README.md"
+  ],
+  "governance": {
+    "proposal_id": "test-proposal-complex-001",
+    "esg_requirements": {
+      "environmental_score": 75.0,
+      "social_score": 80.0,
+      "governance_score": 85.0,
+      "overall_score": 80.0
+    },
+    "risk_threshold": 60.0,
+    "causal_analysis_required": true
+  },
+  "iteration_config": {
+    "max_iterations": 5,
+    "test_required": true,
+    "quality_threshold": 0.85
+  },
+  "deployment": {
+    "enabled": true,
+    "provider": "netlify",
+    "auto_deploy": true
+  }
+}
+
